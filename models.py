@@ -1,6 +1,5 @@
 from sqlalchemy import String, Integer, Column, DATE, Boolean
 from database import Base
-from datetime import date
 
 class StudentTable(Base):
     __tablename__ = "student_login"

@@ -4,11 +4,10 @@ from database import SessionLocal
 from pydantic import BaseModel, validator, Field, EmailStr
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import timedelta, datetime
 from starlette import status
-from typing import Optional
 from datetime import date
 
 

@@ -3,7 +3,6 @@ import models
 from database import SessionLocal
 from pydantic import BaseModel, validator, Field, EmailStr
 from sqlalchemy.orm import Session
-from datetime import date
 from starlette import status
 from routers.auth import check_password, hash_passord, get_current_user
 
