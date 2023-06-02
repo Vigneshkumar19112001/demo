@@ -1,5 +1,6 @@
-from sqlalchemy import String, Integer, Column, DATE, Boolean
+from sqlalchemy import String, Integer, Column, DATE, Boolean, ForeignKey, BOOLEAN, DateTime
 from database import Base
+from sqlalchemy.orm import relationship
 
 class StudentTable(Base):
     __tablename__ = "student_login"
@@ -16,4 +17,18 @@ class StudentTable(Base):
     gender = Column(String, nullable=False)
     dob = Column(DATE)
     is_admin = Column(Boolean, default="False")
+
+    refresh_tokens = relationship('Token', back_populates='login_token')
+
+
+class Token(Base):
+    __tablename__ = "refresh_tokens"
+
+    token_id = Column(Integer, primary_key=True, index=True)
+    tokens = Column(String, nullable=False)
+    student_id = Column(Integer, ForeignKey("student_login.id"),nullable=False)
+    access_token = Column(String, nullable=False)
+    expire_at = Column(DateTime, nullable=False)
+
+    login_token = relationship('StudentTable', back_populates='refresh_tokens')
 

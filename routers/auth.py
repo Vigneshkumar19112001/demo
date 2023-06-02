@@ -1,3 +1,10 @@
+# 1.store refresh token and access token
+# 2.for multiple login use multiple refresh and access token
+# 3.access token has to refresh for every time when the acces token expires
+# 4.for generating access token first check whether the refresh token is expired or not
+# 5.delete the refresh token once expires
+
+from typing import Optional
 from fastapi import  Depends, HTTPException, Request, Response, APIRouter
 import models
 from database import SessionLocal
@@ -27,8 +34,8 @@ router = APIRouter(
 
 SECRET_KEY = "fb5547d9094d960a71a6d4be312b6a3fd50dea49cf47fd8d77b817b520396375"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated = 'auto')
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl='token')
@@ -108,25 +115,58 @@ def authenticate_user(username: str, pwd: str, db):
         return False
     return user
 
-def create_access_token(username: str, user_id: int, is_admin: bool, expiretime):
+def create_access_token(username: str, user_id: int, is_admin: bool, expiretime: Optional[timedelta] = None):
     encode = {'sub': username, 'id': user_id, 'is_admin': is_admin}
-    expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    encode.update({'exp': expires})
+    if expiretime:
+        expire = datetime.utcnow() + expiretime
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    encode.update({'exp': expire})
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
+
+refresh_expire_at = datetime.utcnow() + timedelta(REFRESH_TOKEN_EXPIRE_DAYS)
 
 def create_refresh_token(username: str, user_id: int, is_admin: bool, expiretime):
     refresh_token = {'sub': username, 'id': user_id, 'is_admin': is_admin}
-    expires = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    refresh_token.update({'exp': expires})
+    if expiretime:
+        expire = datetime.utcnow() + expiretime
+    else:
+        expire = datetime.utcnow() + refresh_expire_at
+    refresh_token.update({'exp': expire})
     return jwt.encode(refresh_token, SECRET_KEY, algorithm=ALGORITHM)
 
-def verify_token(token: str=Depends(oauth2_bearer)):
+def verify_token(db:Session, token:str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        refresh_token = db.query(models.Token).filter(models.Token.tokens == token).first()
+        if refresh_token and refresh_token.expire_at > datetime.now():
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            return payload
+        else:
+            return {'msg' : 'Authentication Failed'}
     except jwt.JWTError:
         return None
+
+
+def update_access_token(refresh_token: str, new_access_token: str, db: Session):
+    token = db.query(models.Token).filter(models.Token.tokens == refresh_token).first()
+    if not token:
+        raise HTTPException(status_code=404, detail="Token not found")
+    token.access_token = new_access_token
+    db.commit()
+    return {'msg' : 'Token added to the database'}
     
+# def store_refresh_token(db: Session, student_id: int, token: str):
+#     refresh_token = models.Token(tokens=token, student_id=student_id)
+#     db.add(refresh_token)
+#     db.commit()
+#     db.refresh(refresh_token)
+#     return refresh_token
+
+def save_refresh_token(db: Session, student_id: int, refresh_token: str, access:str, expire_at: datetime):
+    new_refresh_token = models.Token(tokens=refresh_token, student_id=student_id, access_token=access, expire_at = expire_at)
+    db.add(new_refresh_token)
+    db.commit()
+    return "token created"
 
 async def get_current_user(token: str = Depends(oauth2_bearer)):
     try:
@@ -188,28 +228,37 @@ async def login_for_access_token(response: Response, form: Login, db:Session=Dep
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                                 detail="Could not validate user")
-    access_token = create_access_token(user.username, user.id, user.is_admin,timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    refresh_token = create_refresh_token(user.username, user.id, user.is_admin,timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
-    response.set_cookie(key="access_token", value=access_token, httponly=True)
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True)
+    access_token = create_access_token(user.username, user.id, user.is_admin, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    refresh_token = create_refresh_token(user.username, user.id, user.is_admin, timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
+    save_refresh_token(db,user.id,refresh_token,access_token, refresh_expire_at)
+    response.set_cookie(key="access_token", value=access_token, httponly=True) #to be deleted
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True) #to be deleted
     return {'refresh_token': refresh_token, 'access_token': access_token, 'token_type': 'bearer'}
-    
+
+@router.get("/token")
+async def get_all_token(db: Session=Depends(get_db)):
+    return db.query(models.Token).all()
+
+@router.delete("/delete_token/{student_id}")
+async def delete_token(student_id :int, db: Session=Depends(get_db)):
+    delete_id =  db.query(models.Token).filter(models.Token.token_id == student_id).delete()
+    if delete_id:
+        db.commit()
+        return "user deleted"
+    return "user not found"
+
 
 @router.get("/refresh_token", status_code=status.HTTP_200_OK)
 async def refresh_token(request: Request, user: dict = Depends(get_current_user), db:Session=Depends(get_db)):
-
-    # url = "http://127.0.0.1:8000/refresh_token"
     token = request.cookies['refresh_token']
-    payload = verify_token(token)
-    if payload is None:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-    user_id = user.get('id')
-    username = user.get('sub')
-    is_admin = user.get('is_admin')
-    new_access_token = create_access_token(user_id, username, is_admin, timedelta(minutes=REFRESH_TOKEN_EXPIRE_DAYS))
-
-    return {"new_access_token": new_access_token}
+    if verify_token(db, token):
+        user_id = user.get('id')
+        username = user.get('sub')
+        is_admin = user.get('is_admin')
+        new_access_token = create_access_token(user_id, username, is_admin, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+        update_access_token(token, new_access_token, db)
+        return {"new_access_token": new_access_token}
+    return {"new_access_token": ""}
 
 
 @router.get("/logout", status_code=status.HTTP_200_OK)
