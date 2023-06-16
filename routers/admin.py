@@ -1,3 +1,7 @@
+#admin can search for the particular user
+#admin can able get the all students list
+#admin can able to delete a user if he needs along with his details and tokens
+
 from fastapi import Depends, APIRouter
 from database import SessionLocal
 import models
@@ -36,6 +40,24 @@ async def list_of_students(db:Session=Depends(get_db), user:dict = Depends(get_c
         return paginated_items
     return "Authentication failed"
 
+
+@router.delete("/deleteUser/{username}", status_code=status.HTTP_200_OK)
+async def delete_user(username: str,user:dict = Depends(get_current_user), db:Session=Depends(get_db)):
+    if user and user.get('is_admin'):
+        student = db.query(models.StudentTable).filter(models.StudentTable.username == username).first()
+        if not student:
+            return {"msg": "user not found"}
+        
+        contacts = db.query(models.PhoneBook).filter(models.PhoneBook.user_id == student.id).all()
+        tokens = db.query(models.Token).filter(models.Token.student_id == student.id).all()
+        for contact in contacts:
+            db.delete(contact)
+        for token in tokens:
+            db.delete(token)
+        db.delete(student)
+        db.commit()
+        return {"msg": "user and details are deleted"}
+
 # @router.get("/filter_item", status_code=status.HTTP_200_OK)
 # async def filter(address: str, user:dict = Depends(get_current_user), db:Session=Depends(get_db)):
 #     if user is None or user.get('is_admin') == 'True':
@@ -45,13 +67,5 @@ async def list_of_students(db:Session=Depends(get_db), user:dict = Depends(get_c
 #         return filtered_item
 #     return "not found"
 
-@router.delete("/deleteUser/{id}", status_code=status.HTTP_200_OK)
-async def delete_user(id: int,user:dict = Depends(get_current_user), db:Session=Depends(get_db)):
-    if user and user.get('is_admin'):
-        student = db.query(models.StudentTable).filter(models.StudentTable.id == id).delete()
-        if student:
-            db.commit()
-            return "user deleted successfully"
-        return "user not found"
-    return "Authentication failed"
+
     

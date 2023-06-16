@@ -107,7 +107,7 @@ def hash_passord(pwd):
 def check_password(password, pwd):
     return bcrypt_context.verify(password, pwd)
 
-def authenticate_user(username: str, pwd: str, db):
+def authenticate_user(username: str, pwd: str, db:Session):
     user = db.query(models.StudentTable).filter(models.StudentTable.username == username).first() or db.query(models.StudentTable).filter(models.StudentTable.email == username).first()
     if not user:
         return False
@@ -231,17 +231,17 @@ async def login_for_access_token(response: Response, form: Login, db:Session=Dep
     access_token = create_access_token(user.username, user.id, user.is_admin, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     refresh_token = create_refresh_token(user.username, user.id, user.is_admin, timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
     save_refresh_token(db,user.id,refresh_token,access_token, refresh_expire_at)
-    response.set_cookie(key="access_token", value=access_token, httponly=True) #to be deleted
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True) #to be deleted
+    response.set_cookie(key="access_token", value=access_token, httponly=True)
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True)
     return {'refresh_token': refresh_token, 'access_token': access_token, 'token_type': 'bearer'}
 
-@router.get("/token")
+@router.get("/token", status_code=status.HTTP_200_OK)
 async def get_all_token(db: Session=Depends(get_db)):
     return db.query(models.Token).all()
 
-@router.delete("/delete_token/{student_id}")
-async def delete_token(student_id :int, db: Session=Depends(get_db)):
-    delete_id =  db.query(models.Token).filter(models.Token.token_id == student_id).delete()
+@router.delete("/delete_token/{token_id}", status_code=status.HTTP_200_OK)
+async def delete_token(token_id :int, db: Session=Depends(get_db)):
+    delete_id =  db.query(models.Token).filter(models.Token.token_id == token_id).delete()
     if delete_id:
         db.commit()
         return "user deleted"
@@ -250,7 +250,7 @@ async def delete_token(student_id :int, db: Session=Depends(get_db)):
 
 @router.get("/refresh_token", status_code=status.HTTP_200_OK)
 async def refresh_token(request: Request, user: dict = Depends(get_current_user), db:Session=Depends(get_db)):
-    token = request.cookies['refresh_token']
+    token = request.cookies.get('refresh_token')
     if verify_token(db, token):
         user_id = user.get('id')
         username = user.get('sub')

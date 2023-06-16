@@ -1,7 +1,9 @@
-from fastapi import Depends, HTTPException, Request, APIRouter
+# 1. user can edit the password if he needed once user logined in
+
+from fastapi import Depends, Request, APIRouter
 import models
 from database import SessionLocal
-from pydantic import BaseModel, validator, Field, EmailStr
+from pydantic import BaseModel, validator
 from sqlalchemy.orm import Session
 from starlette import status
 from routers.auth import check_password, hash_passord, get_current_user
@@ -28,43 +30,14 @@ class UserVerification(BaseModel):
     new_password: str
 
     @validator('username')
-    def username_validation(cls, v):
-        assert v.isalnum(), 'must be an alphanumeric'
-        return v
+    def username_validation(cls, value):
+        assert value.isalnum(), 'must be an alphanumeric'
+        return value
 
     @validator('password')
     def password_validator(cls, value):
         assert value.isalnum(), 'must be an alphanumeric'
         return value
-
-
-class ForgetPassword(BaseModel):
-    username: str = Field(...,min_length=4)
-    password: str = Field(...,min_length=8)
-
-    @validator('username')
-    def username_validation(cls, v):
-        assert v.isalnum(), 'must be an alphanumeric'
-        return v
-
-    @validator('password')
-    def password_validator(cls, value):
-        assert value.isalnum(), 'must be an alphanumeric'
-        return value
-
-
-@router.put("/forget_password", status_code=status.HTTP_205_RESET_CONTENT)
-def forget_password(forget_password: ForgetPassword, db:Session=Depends(get_db)):
-    user = db.query(models.StudentTable).filter(models.StudentTable.email == forget_password.username).first() or db.query(models.StudentTable).filter(models.StudentTable.username == forget_password.username).first()
-
-    if user is not None:
-        user.password = hash_passord(forget_password.password)
-        
-        db.add(user)
-        db.commit()
-        return "Successfully changed"
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="userName or email not found")
-
 
 @router.post("/edit_password", status_code=status.HTTP_205_RESET_CONTENT)
 async def edit_password(request: Request, user_verification: UserVerification, user: dict = Depends(get_current_user), db: Session=Depends(get_db)):
@@ -79,4 +52,36 @@ async def edit_password(request: Request, user_verification: UserVerification, u
             db.commit()
             return 'Successful'
     return 'Invalid user or request'
+
+
+
+# class ForgetPassword(BaseModel):
+#     username: str = Field(...,min_length=4)
+#     password: str = Field(...,min_length=8)
+
+#     @validator('username')
+#     def username_validation(cls, v):
+#         assert v.isalnum(), 'must be an alphanumeric'
+#         return v
+
+#     @validator('password')
+#     def password_validator(cls, value):
+#         assert value.isalnum(), 'must be an alphanumeric'
+#         return value
+
+
+# @router.put("/forget_password", status_code=status.HTTP_205_RESET_CONTENT)
+# def forget_password(forget_password: ForgetPassword, db:Session=Depends(get_db)):
+#     user = db.query(models.StudentTable).filter(models.StudentTable.email == forget_password.username).first() or db.query(models.StudentTable).filter(models.StudentTable.username == forget_password.username).first()
+
+#     if user is not None:
+#         user.password = hash_passord(forget_password.password)
+        
+#         db.add(user)
+#         db.commit()
+#         return "Successfully changed"
+#     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="userName or email not found")
+
+
+
 
