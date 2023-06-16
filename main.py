@@ -19,7 +19,7 @@ models.Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 async def root():
-    return "copy and the past the link 'http://127.0.0.1:8000/docs#/' in the url"
+    return "add '/docs' to your existing url"
 
 app.include_router(auth.router)
 app.include_router(users.router)
